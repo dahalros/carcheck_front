@@ -11,9 +11,9 @@ const plan = usePlanStore();
 
 const subscriptionStore = useSubscriptionStore();
 const registrationSearchStore = useCarRegistrationSearchStore();
+const { applyPaymentPayload, redirectToReport } = usePaymentSuccess();
 
 const envConfig = useRuntimeConfig();
-
 const stripePromise = loadStripe(envConfig.public.stripe_public_key as string);
 const loading = ref(false);
 const done = ref(false);
@@ -46,10 +46,9 @@ const style = {
 };
 
 onMounted(async () => {
-    const stripe = await stripePromise;
-    if (!stripe) return;
-
-    if (stripe) {
+    try {
+        const stripe = await stripePromise;
+        if (!stripe) throw new Error('Unable to load the payment form. Please reload the page.');
         elements = stripe.elements();
         cardNumberElement = elements.create('cardNumber', { placeholder: '0000 0000 0000 0000', style });
         cardNumberElement.mount('#card-number-element');
@@ -58,6 +57,8 @@ onMounted(async () => {
         cardCvcElement = elements.create('cardCvc', { placeholder: '584', style });
         cardCvcElement.mount('#card-cvc-element');
 
+    } catch {
+        errorMessage.value = 'Unable to load the payment form. Please reload the page or contact support.';
     }
 });
 async function handleCheckoutClick() {
@@ -139,10 +140,8 @@ async function handleCheckoutClick() {
                     await registrationSearchStore.searchCarRegNumber(regNumber);
                 }
                 done.value = true;
-                setTimeout(() => {
-                    buttonProcess.value = "DONE!";
-                    navigateTo('/report');
-                }, 3000);
+                buttonProcess.value = "DONE!";
+                redirectToReport();
             } else {
                 await createSubscription(selectedPlan);
             }
@@ -179,25 +178,8 @@ async function createSubscription(selectedPlan) {
         //     successMessage.value = "Payment done successfully.";
         //     buttonProcess.value = "DONE!";
         // }
-        let payload = response.payload;
-        // set/change request_count, one_off_request_count, request_count_trial to user
-        if (payload?.hasSubscription) {
-            user.request_count = Number(payload.hasSubscription.request_count) || 0;
-            user.one_off_request_count = Number(payload.hasSubscription.one_off_request_count) || 0;
-            user.request_count_trial = Number(payload.hasSubscription.request_count_trial) || 0;
-        }
-        if (payload?.hasSubscription) {
-            await subscriptionStore.setHasSubscription(payload.hasSubscription);
-        }
-
-        if (payload?.subscription) {
-            await subscriptionStore.setCurrentSubscription(payload.subscription);
-        }
-
-
-        if (payload?.car_data) {
-            await registrationSearchStore.applyCarData(payload.car_data);
-        }
+        // Shared with the ECOMMPAY checkout so both providers settle identically.
+        await applyPaymentPayload(response.payload);
 
         // if (selectedPlan.plan_code === '48h-basic-subscription') {
         //     navigateTo('/vehicle/basic-report');
@@ -207,10 +189,8 @@ async function createSubscription(selectedPlan) {
         //     navigateTo('/vehicle/single-offer-report');
         // }
         done.value = true;
-        setTimeout(() => {
-            successMessage.value = "Payment successful.";
-            navigateTo('/report');
-        }, 3000);
+        successMessage.value = "Payment successful.";
+        redirectToReport();
         buttonProcess.value = "REDIRECTING!";
 
     } catch (error) {

@@ -33,6 +33,7 @@ export const useDownloadReport = () => {
       if (!(tokenStore.getToken && tokenStore.getStatus)) {
         return navigateTo("/auth/login");
       }
+      await carStore.fetchRequestCounts();
       if (!subscriptionStore.getSubscriptionStatus) {
         return navigateTo("/pricing");
       }

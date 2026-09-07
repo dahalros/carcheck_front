@@ -1,0 +1,288 @@
+<script setup lang="ts">
+import { useCarRegistrationSearchStore } from '@/stores/carRegistrationSearch';
+import { usePlanStore } from '@/stores/plan';
+import { useSubscriptionStore } from '@/stores/subscription';
+import type { ApiRequestError, EcommPayWidgetParams } from '~/types/models';
+
+/**
+ * ECOMMPAY embedded checkout: the card microframe plus Apple Pay / Google Pay buttons.
+ *
+ * Different integration from EcommPay.vue, which loads a whole hosted Payment Page in an
+ * iframe. Here ECOMMPAY's merchant.js renders a bare card form inside our layout and the page
+ * owns the submit button, so the checkout looks like the rest of the site. The card itself is
+ * still entered inside ECOMMPAY's frame -- nothing on this page ever touches card data.
+ *
+ * The widget's own onPaymentSuccess is a UI signal, not proof of payment. Entitlement is
+ * granted by the server-to-server callback, so success here starts a poll of our own status
+ * endpoint and waits for that to agree.
+ *
+ * https://developers.ecommpay.com/en/en_pp_microframe_solution.html
+ * https://developers.ecommpay.com/en/en_pp_embedded_payment_buttons.html
+ */
+
+const CDN_CSS = 'https://paymentpage.ecommpay.com/shared/merchant.css';
+const CDN_JS = 'https://paymentpage.ecommpay.com/shared/merchant.js';
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_CEILING_MS = 3 * 60 * 1000;
+const LIBRARY_TIMEOUT_MS = 15000;
+
+type WidgetHandle = { trySubmit?: () => void };
+type EPayWidgetApi = {
+  runEmbedded: (params: Record<string, unknown>, method: string) => WidgetHandle;
+};
+
+const subscriptionStore = useSubscriptionStore();
+const registrationSearchStore = useCarRegistrationSearchStore();
+const planStore = usePlanStore();
+const { applyPaymentPayload, redirectToReport } = usePaymentSuccess();
+
+const loading = ref(true);
+const submitting = ref(false);
+const done = ref(false);
+const errorMessage = ref<string | null>(null);
+const successMessage = ref<string | null>(null);
+const termsAccepted = ref(false);
+const expressAvailable = ref(false);
+const buttonLabel = ref('Get report');
+
+const cardTargetId = ref('ecommpay-card-frame');
+const expressTargetId = ref('ecommpay-express-buttons');
+
+let cardWidget: WidgetHandle | null = null;
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+// The library is loaded from ECOMMPAY's CDN on purpose: their docs are explicit that hosting
+// merchant.js locally causes critical errors, since it is versioned with the payment frames.
+useHead({
+  link: [{ rel: 'stylesheet', href: CDN_CSS }],
+  script: [{ src: CDN_JS, defer: true }],
+});
+
+const canSubmit = computed(() => termsAccepted.value && !submitting.value && !done.value && !loading.value);
+
+const stopPolling = () => {
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+};
+
+/** merchant.js is deferred, so it may not have defined EPayWidget by the time we mount. */
+function waitForLibrary(): Promise<EPayWidgetApi> {
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+
+    const check = () => {
+      const api = (window as unknown as { EPayWidget?: EPayWidgetApi }).EPayWidget;
+      if (api?.runEmbedded) return resolve(api);
+
+      if (Date.now() - startedAt > LIBRARY_TIMEOUT_MS) {
+        return reject(new Error('The payment library could not be loaded.'));
+      }
+
+      setTimeout(check, 100);
+    };
+
+    check();
+  });
+}
+
+/**
+ * Callbacks shared by both widgets. Everything the platform needs was signed server-side, so
+ * onCheckSubmit has nothing left to validate and simply approves.
+ */
+function sharedCallbacks(paymentId: string) {
+  return {
+    onCheckSubmit: async (_data: unknown, resolve: () => void) => resolve(),
+    onShowLoader: () => {
+      submitting.value = true;
+      buttonLabel.value = 'PROCESSING...';
+    },
+    onHideLoader: () => {
+      submitting.value = false;
+    },
+    onPaymentSuccess: () => {
+      buttonLabel.value = 'ALMOST THERE!';
+      // The widget says the customer is done; our callback says whether they paid.
+      confirmWithBackend(paymentId);
+    },
+    onPaymentFail: () => {
+      submitting.value = false;
+      buttonLabel.value = 'Get report';
+      errorMessage.value = 'That payment did not go through. Please try another card.';
+    },
+    onError: ({ messages }: { messages?: string[] }) => {
+      submitting.value = false;
+      buttonLabel.value = 'Get report';
+      errorMessage.value = messages?.length
+        ? messages.join(' ')
+        : 'Something went wrong with the payment form.';
+    },
+  };
+}
+
+async function initialise() {
+  const plan = planStore.getSelectedPlan;
+
+  if (!plan) {
+    errorMessage.value = 'No plan selected.';
+    loading.value = false;
+    return;
+  }
+
+  try {
+    const [api, response] = await Promise.all([
+      waitForLibrary(),
+      subscriptionStore.fetchEcommPayWidgetConfig(
+        plan.id,
+        registrationSearchStore.reg_number || null,
+      ),
+    ]);
+
+    const config = response.payload;
+    if (!config?.card) throw new Error('The payment form could not be prepared.');
+
+    // Target ids come from the backend because they are part of the signed parameter set.
+    cardTargetId.value = config.card.target_element;
+    expressTargetId.value = config.express?.target_element ?? expressTargetId.value;
+    loading.value = false;
+    await nextTick();
+
+    cardWidget = runWidget(api, config.card);
+
+    // Express buttons are a bonus, not a requirement: if the wallets are unavailable on this
+    // device the card form must still work, so their failure is logged and swallowed.
+    if (config.express) {
+      try {
+        runWidget(api, config.express);
+        expressAvailable.value = true;
+      } catch (error) {
+        console.error('Express payment buttons unavailable:', error);
+      }
+    }
+  } catch (error: unknown) {
+    loading.value = false;
+    errorMessage.value =
+      (error as Partial<ApiRequestError>).data?.message ||
+      (error as Error).message ||
+      'We could not start the payment. Please try again.';
+  }
+}
+
+/** Params go through verbatim -- anything added here would break the server-side signature. */
+function runWidget(api: EPayWidgetApi, params: EcommPayWidgetParams): WidgetHandle {
+  return api.runEmbedded({ ...params, ...sharedCallbacks(params.payment_id) }, 'POST');
+}
+
+function handleSubmit() {
+  if (!canSubmit.value) {
+    if (!termsAccepted.value) errorMessage.value = 'You must accept the terms and conditions.';
+    return;
+  }
+
+  errorMessage.value = null;
+
+  // The microframe renders no button of its own; this is what submits the card form. Field
+  // level validation errors come back through onError.
+  cardWidget?.trySubmit?.();
+}
+
+/** Poll our own status endpoint until the ECOMMPAY callback has recorded the payment. */
+function confirmWithBackend(paymentId: string) {
+  stopPolling();
+  const startedAt = Date.now();
+
+  const poll = async () => {
+    if (done.value) return;
+
+    if (Date.now() - startedAt > POLL_CEILING_MS) {
+      submitting.value = false;
+      errorMessage.value =
+        'Your payment went through but is taking a while to confirm. Your report will appear shortly.';
+      return;
+    }
+
+    try {
+      const response = await subscriptionStore.checkEcommPayStatus(paymentId);
+      const payload = response.payload;
+
+      if (payload?.status === 'success') {
+        stopPolling();
+        done.value = true;
+        submitting.value = false;
+        buttonLabel.value = 'REDIRECTING!';
+        successMessage.value = 'Payment successful.';
+        await applyPaymentPayload(payload);
+        redirectToReport();
+        return;
+      }
+
+      if (payload?.status === 'failed') {
+        stopPolling();
+        submitting.value = false;
+        buttonLabel.value = 'Get report';
+        errorMessage.value = payload.message || 'Payment failed. Please try another card.';
+        return;
+      }
+    } catch (error) {
+      // A single failed poll says nothing about the payment -- keep waiting.
+      console.error('Payment status check failed:', error);
+    }
+
+    pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+  };
+
+  poll();
+}
+
+onMounted(initialise);
+onBeforeUnmount(stopPolling);
+
+watch(errorMessage, (message) => {
+  if (message) setTimeout(() => (errorMessage.value = null), 8000);
+});
+</script>
+
+<template>
+  <div class="flex flex-col h-full">
+    <div v-if="loading" class="flex items-center justify-center flex-1 text-sm text-[#2C2C2C]">
+      Loading secure payment form...
+    </div>
+
+    <div v-show="!loading && !done" class="flex flex-col flex-1 min-h-0">
+      <!-- Apple Pay / Google Pay. ECOMMPAY renders whichever the device supports. -->
+      <div v-show="expressAvailable" class="shrink-0">
+        <div :id="expressTargetId"></div>
+        <div class="flex items-center gap-3 my-4 text-xs text-[#BEC0C6]">
+          <span class="h-px flex-1 bg-[#E5E7EB]"></span>
+          <span>or pay by card</span>
+          <span class="h-px flex-1 bg-[#E5E7EB]"></span>
+        </div>
+      </div>
+
+      <!-- The card microframe. Card data lives in ECOMMPAY's frame, never in this page. -->
+      <div :id="cardTargetId" class="flex-1 min-h-[220px]"></div>
+
+      <label class="flex items-start gap-2 mt-4 text-xs leading-snug text-[#2C2C2C] shrink-0">
+        <input v-model="termsAccepted" type="checkbox" class="mt-[2px] shrink-0" />
+        <span>I accept the terms and conditions.</span>
+      </label>
+
+      <button
+        type="button"
+        class="w-full py-3 mt-4 font-bold text-white rounded-lg bg-brand disabled:opacity-60 shrink-0"
+        :disabled="!canSubmit"
+        @click="handleSubmit"
+      >
+        {{ buttonLabel }}
+      </button>
+    </div>
+
+    <div v-if="done" class="flex items-center justify-center flex-1 font-bold text-center text-brand">
+      {{ successMessage }}<br />Redirecting to your report...
+    </div>
+
+    <p v-if="errorMessage" class="mt-3 text-sm text-[#EF343A]">{{ errorMessage }}</p>
+  </div>
+</template>

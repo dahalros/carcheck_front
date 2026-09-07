@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import ApiService from "~/services/apiService";
+import { useSubscriptionStore } from "~/stores/subscription";
 import type {
   ApiDataResponse,
   ApiPayloadResponse,
@@ -68,6 +69,9 @@ export const useCarStore = defineStore("car", {
       if (!response.notModified && response.data) {
         this.requestCounts = response.data.payload;
         this.etags.requestCounts = response.etag;
+        if (this.requestCounts.has_subscription) {
+          await useSubscriptionStore().setHasSubscription(this.requestCounts.has_subscription);
+        }
       }
 
       return this.requestCounts;

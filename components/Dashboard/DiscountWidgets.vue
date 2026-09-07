@@ -19,9 +19,17 @@ function startPlanDrag(event: PointerEvent) {
   startDrag(event);
 }
 
+const { isEcommPay, fetchActiveProvider } = useActiveProvider();
+
 onMounted(async () => {
   try {
-    stripePromise.value = await loadStripe(envConfig.public.stripe_public_key as string);
+    await fetchActiveProvider();
+
+    // Only Stripe needs its SDK in the page; ECOMMPAY charges the saved card server-side.
+    if (!isEcommPay.value) {
+      stripePromise.value = await loadStripe(envConfig.public.stripe_public_key as string);
+    }
+
     await carStore.fetchAllCustomPlans();
   } catch (error) {
     console.error("Failed to fetch discount widgets:", error);
@@ -52,6 +60,21 @@ async function buyCustomPlan(plan: CustomPlan): Promise<void> {
 
     const response = await carStore.buyCustomPlan(plan);
     const result = response.payload;
+
+    // ECOMMPAY charges the card on file server-side. There is no 3D Secure step to hand back
+    // to the browser, so the answer is final now or settled later by the callback.
+    if (isEcommPay.value) {
+      if (result.success) {
+        await carStore.fetchRequestCounts();
+      } else if (result.pending) {
+        errorMessage.value = result.message || "Your payment is being processed. Your checks will appear shortly.";
+      } else {
+        errorMessage.value = result.message || "Payment failed. Please try again.";
+      }
+
+      awaitingPayment.value = false;
+      return;
+    }
 
     const stripe = stripePromise.value;
     if (!stripe) {

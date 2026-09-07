@@ -1,14 +1,24 @@
 <script setup>
 import { ref } from 'vue';
 import Stripe from '~/components/Payment/Stripe.vue';
+// The embedded microframe, not the hosted-page iframe in EcommPay.vue: it renders the card
+// form inside our own layout and lets us keep the submit button and the Apple/Google Pay
+// buttons in the page.
+import EcommPayMicroframe from '~/components/Payment/EcommPayMicroframe.vue';
 
 import { useSubscriptionStore } from '@/stores/subscription';
 const subscriptionStore = useSubscriptionStore();
 // const hasSubscription = computed(() => subscriptionStore.hasSubscription);
 
-onMounted(() => {
+// Which checkout renders is a database row on the backend, not a build-time choice.
+const { isEcommPay, fetchActiveProvider } = useActiveProvider();
+const providerResolved = ref(false);
+
+onMounted(async () => {
   // has subs? redirect else
   startTimer();
+  await fetchActiveProvider();
+  providerResolved.value = true;
 });
 
 definePageMeta({
@@ -76,7 +86,8 @@ const subsPrice = computed(() => planStore?.getSubsPrice);
                 ? '0' + seconds : seconds }} </span>
           </div>
           <div class="h-[393px] bg-white rounded-[10px] px-[29px] py-7 text-[#2C2C2C] shadow z-30 lg:h-[32.5rem] lg:rounded-[13px] lg:px-[38px] lg:py-9">
-            <Stripe />
+            <EcommPayMicroframe v-if="providerResolved && isEcommPay" />
+            <Stripe v-else-if="providerResolved" />
           </div>
         </div>
       </div>
