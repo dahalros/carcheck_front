@@ -16,7 +16,7 @@ async function checkout(overrides = {}) {
     render,
     components: { NuxtLink: { template: '<a><slot /></a>' } },
     data: () => ({
-      loading: false, done: false, submitting: false, termsAccepted: false, canSubmit: false,
+      loading: false, done: false, submitting: false, termsAccepted: false, canSubmit: false, needsRestart: false,
       expressAvailable: false, buttonLabel: 'Get report', errorMessage: null,
       successMessage: null, pendingNotice: null, cardTargetId: 'card', expressTargetId: 'express',
       handleSubmit() {}, dismissError() {}, ...overrides,
