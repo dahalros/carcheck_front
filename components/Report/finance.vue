@@ -32,7 +32,7 @@ onMounted(async () => {
 
 const formatDate = (dateString: string) => String(dateString ?? '').split('T')[0];
 
-const { isShowAble } = useIsShowAble();
+const { includesVdiChecks } = useIsShowAble();
 </script>
 
 
@@ -100,7 +100,7 @@ const { isShowAble } = useIsShowAble();
           </tr>
         </thead>
         <tbody>
-          <template v-if="isShowAble">
+          <template v-if="includesVdiChecks">
             <template v-for="(record, index) in finance" :key="index">
               <tr v-if="finance.length > 1">
                 <th colspan="2">Agreement {{ index + 1 }}</th>

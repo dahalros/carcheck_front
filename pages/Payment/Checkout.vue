@@ -1,16 +1,13 @@
 <script setup>
 import { ref } from 'vue';
 import Stripe from '~/components/Payment/Stripe.vue';
-// The embedded microframe, not the hosted-page iframe in EcommPay.vue: it renders the card
-// form inside our own layout and lets us keep the submit button and the Apple/Google Pay
-// buttons in the page.
+
 import EcommPayMicroframe from '~/components/Payment/EcommPayMicroframe.vue';
 
 import { useSubscriptionStore } from '@/stores/subscription';
 const subscriptionStore = useSubscriptionStore();
 // const hasSubscription = computed(() => subscriptionStore.hasSubscription);
 
-// Which checkout renders is a database row on the backend, not a build-time choice.
 const { isEcommPay, fetchActiveProvider } = useActiveProvider();
 const providerResolved = ref(false);
 
@@ -85,14 +82,16 @@ const subsPrice = computed(() => planStore?.getSubsPrice);
                 10
                 ? '0' + seconds : seconds }} </span>
           </div>
-          <div class="h-[393px] bg-white rounded-[10px] px-[29px] py-7 text-[#2C2C2C] shadow z-30 lg:h-[32.5rem] lg:rounded-[13px] lg:px-[38px] lg:py-9">
+          <div class="relative flex flex-col h-[393px] bg-white rounded-[10px] text-[#2C2C2C] shadow z-30 lg:h-[32.5rem] lg:rounded-[13px] lg:px-[38px]"
+            :class="isEcommPay ? 'px-5 py-4 lg:py-6' : 'px-[29px] py-7 lg:py-9'">
             <EcommPayMicroframe v-if="providerResolved && isEcommPay" />
             <Stripe v-else-if="providerResolved" />
           </div>
         </div>
       </div>
 
-      <div class="relative pointer-events-none lg:absolute lg:inset-x-0 lg:bottom-0">
+      <div
+        class="relative transition-all duration-300 pointer-events-none checkout-decoration lg:absolute lg:inset-x-0 lg:bottom-0">
         <div class="relative z-10 mx-auto max-w-screen-2xl">
           <img src="/images/webp/checkout-car.webp"
             class="ml-[14px] w-[323px] lg:ml-0 lg:w-[35rem] lg:translate-x-[6.9rem] lg:translate-y-[3.5rem]" alt="">

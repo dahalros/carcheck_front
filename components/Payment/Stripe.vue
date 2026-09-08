@@ -109,6 +109,7 @@ async function handleCheckoutClick() {
             paymentMethod.id,
             { name: cardholderName.value },
             plan.getSelectedPlan.id,
+            registrationSearchStore.reg_number || null,
         );
 
 
@@ -130,15 +131,8 @@ async function handleCheckoutClick() {
         if (plan.getSelectedPlan) {
             let selectedPlan = plan.getSelectedPlan;
             if (selectedPlan.plan_code === "single-offer") {
-                let payload = response.payload;
                 successMessage.value = "Payment successful.";
-                if (payload?.hasSubscription) {
-                    await subscriptionStore.setHasSubscription(payload.hasSubscription);
-                }
-                const regNumber = registrationSearchStore.reg_number || localStorage.getItem('reg_number');
-                if (regNumber) {
-                    await registrationSearchStore.searchCarRegNumber(regNumber);
-                }
+                await applyPaymentPayload(response.payload);
                 done.value = true;
                 buttonProcess.value = "DONE!";
                 redirectToReport();

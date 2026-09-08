@@ -36,13 +36,13 @@ const moreFeatures = () => {
     </div>
 
     <p
-      class="hero-subtitle absolute z-10 whitespace-nowrap font-light leading-[normal] text-[#0F1829] md:static md:mt-5 md:text-2xl lg:text-[1.95rem]">
+      class="hero-subtitle absolute  whitespace-nowrap font-light leading-[normal] text-[#0F1829] md:static md:mt-5 md:text-2xl lg:text-[1.95rem]">
       We can generate a <span class="font-bold">full history</span><br />
       report for <span class="font-bold">any car</span>
     </p>
 
     <!--  features      -->
-    <div class="hero-feature-block absolute z-10 md:static">
+    <div class="hero-feature-block absolute  md:static">
       <Features :addedMoreFeatures="addedMoreFeatures" class="hero-features md:mt-[1.9rem]"
         alignment="flex flex-col md:grid md:grid-cols-2 md:gap-x-[2.1rem] md:gap-y-[0.35rem]"
         text-size="hero-feature-text md:text-xl" />

@@ -1,31 +1,20 @@
 <script lang="ts" setup>
-import { onMounted } from 'vue';
-
 const { isShowAble } = useIsShowAble();
+const carRegistrationSearchStore = useCarRegistrationSearchStore();
 
-
-onMounted(async () => {
-  // if (tokenStore.isTokenExpired) {
-  //   debugger
-  //     authStore.logout();
-  // }
-});
+const dataVersion = computed(() => carRegistrationSearchStore.dataVersion);
 
 definePageMeta({
   title: 'Car Check Report',
   meta: [
-    {
-      hid: 'Car report generated.', name: 'Download all data of the car', content: 'Download all data of the car'
-    }
-
+    { hid: 'Car report generated.', name: 'Download all data of the car', content: 'Download all data of the car' },
   ],
   middleware: ['check-reg-number'],
 });
-
 </script>
 
 <template>
-  <div class="report-page overflow-x-hidden bg-[#EEEEEE]">
+  <div class="report-page overflow-x-hidden bg-[#EEEEEE]" :key="dataVersion">
 
     <!-- Section 1 -->
     <ReportSection1 id="report" />

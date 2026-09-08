@@ -35,6 +35,19 @@ export const usePaymentSuccess = () => {
 
     if (payload.car_data) {
       await registrationSearchStore.applyCarData(payload.car_data);
+      return;
+    }
+
+    const regNumber =
+      registrationSearchStore.reg_number ||
+      (import.meta.client ? localStorage.getItem("reg_number") : null);
+
+    if (!regNumber) return;
+
+    try {
+      await registrationSearchStore.searchCarRegNumber(regNumber);
+    } catch (error) {
+      console.error("Post-payment report refresh failed:", error);
     }
   };
 

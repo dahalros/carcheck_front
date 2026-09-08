@@ -27,7 +27,7 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_CEILING_MS = 3 * 60 * 1000;
 const LIBRARY_TIMEOUT_MS = 15000;
 
-type WidgetHandle = { trySubmit?: () => void };
+type WidgetHandle = { trySubmit?: () => void; exitIframeFullscren?: () => void };
 type EPayWidgetApi = {
   runEmbedded: (params: Record<string, unknown>, method: string) => WidgetHandle;
 };
@@ -41,7 +41,9 @@ const loading = ref(true);
 const submitting = ref(false);
 const done = ref(false);
 const errorMessage = ref<string | null>(null);
+const needsRestart = ref(false);
 const successMessage = ref<string | null>(null);
+const pendingNotice = ref<string | null>(null);
 const termsAccepted = ref(false);
 const expressAvailable = ref(false);
 const buttonLabel = ref('Get report');
@@ -50,7 +52,23 @@ const cardTargetId = ref('ecommpay-card-frame');
 const expressTargetId = ref('ecommpay-express-buttons');
 
 let cardWidget: WidgetHandle | null = null;
+let expressWidget: WidgetHandle | null = null;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let frameLoadTimer: ReturnType<typeof setTimeout> | null = null;
+
+function finishLoading(failed = false) {
+  if (frameLoadTimer) clearTimeout(frameLoadTimer);
+  loading.value = false;
+  if (failed) {
+    needsRestart.value = true;
+    errorMessage.value = 'The payment form could not be loaded. Please try again.';
+  }
+}
+
+const leaveFullscreen = () => {
+  cardWidget?.exitIframeFullscren?.();
+  expressWidget?.exitIframeFullscren?.();
+};
 
 // The library is loaded from ECOMMPAY's CDN on purpose: their docs are explicit that hosting
 // merchant.js locally causes critical errors, since it is versioned with the payment frames.
@@ -103,16 +121,20 @@ function sharedCallbacks(paymentId: string) {
       submitting.value = false;
     },
     onPaymentSuccess: () => {
+      leaveFullscreen();
       buttonLabel.value = 'ALMOST THERE!';
       // The widget says the customer is done; our callback says whether they paid.
       confirmWithBackend(paymentId);
     },
     onPaymentFail: () => {
+      leaveFullscreen();
       submitting.value = false;
       buttonLabel.value = 'Get report';
+      needsRestart.value = true;
       errorMessage.value = 'That payment did not go through. Please try another card.';
     },
     onError: ({ messages }: { messages?: string[] }) => {
+      leaveFullscreen();
       submitting.value = false;
       buttonLabel.value = 'Get report';
       errorMessage.value = messages?.length
@@ -146,23 +168,23 @@ async function initialise() {
     // Target ids come from the backend because they are part of the signed parameter set.
     cardTargetId.value = config.card.target_element;
     expressTargetId.value = config.express?.target_element ?? expressTargetId.value;
-    loading.value = false;
     await nextTick();
 
+    frameLoadTimer = setTimeout(() => finishLoading(true), LIBRARY_TIMEOUT_MS);
     cardWidget = runWidget(api, config.card);
 
     // Express buttons are a bonus, not a requirement: if the wallets are unavailable on this
     // device the card form must still work, so their failure is logged and swallowed.
     if (config.express) {
       try {
-        runWidget(api, config.express);
+        expressWidget = runWidget(api, config.express);
         expressAvailable.value = true;
       } catch (error) {
         console.error('Express payment buttons unavailable:', error);
       }
     }
   } catch (error: unknown) {
-    loading.value = false;
+    finishLoading();
     errorMessage.value =
       (error as Partial<ApiRequestError>).data?.message ||
       (error as Error).message ||
@@ -172,7 +194,14 @@ async function initialise() {
 
 /** Params go through verbatim -- anything added here would break the server-side signature. */
 function runWidget(api: EPayWidgetApi, params: EcommPayWidgetParams): WidgetHandle {
-  return api.runEmbedded({ ...params, ...sharedCallbacks(params.payment_id) }, 'POST');
+  return api.runEmbedded({
+    ...params,
+    ...sharedCallbacks(params.payment_id),
+    ...(params.target_element === cardTargetId.value ? {
+      onLoaded: () => finishLoading(),
+      onFailLoading: () => finishLoading(true),
+    } : {}),
+  }, 'POST');
 }
 
 function handleSubmit() {
@@ -197,9 +226,12 @@ function confirmWithBackend(paymentId: string) {
     if (done.value) return;
 
     if (Date.now() - startedAt > POLL_CEILING_MS) {
+      stopPolling();
+      done.value = true;
       submitting.value = false;
-      errorMessage.value =
-        'Your payment went through but is taking a while to confirm. Your report will appear shortly.';
+      successMessage.value = 'Payment received.';
+      pendingNotice.value =
+        'It is taking longer than usual to confirm. Your report will appear in your account shortly.';
       return;
     }
 
@@ -220,8 +252,10 @@ function confirmWithBackend(paymentId: string) {
 
       if (payload?.status === 'failed') {
         stopPolling();
+        leaveFullscreen();
         submitting.value = false;
         buttonLabel.value = 'Get report';
+        needsRestart.value = true;
         errorMessage.value = payload.message || 'Payment failed. Please try another card.';
         return;
       }
@@ -236,25 +270,47 @@ function confirmWithBackend(paymentId: string) {
   poll();
 }
 
-onMounted(initialise);
-onBeforeUnmount(stopPolling);
+async function dismissError() {
+  errorMessage.value = null;
 
-watch(errorMessage, (message) => {
-  if (message) setTimeout(() => (errorMessage.value = null), 8000);
+  if (!needsRestart.value) return;
+
+  stopPolling();
+  leaveFullscreen();
+  cardWidget = null;
+  expressWidget = null;
+  needsRestart.value = false;
+  expressAvailable.value = false;
+  submitting.value = false;
+  buttonLabel.value = 'Get report';
+  loading.value = true;
+
+  for (const id of [cardTargetId.value, expressTargetId.value]) {
+    const target = document.getElementById(id);
+    if (target) target.innerHTML = '';
+  }
+
+  await initialise();
+}
+
+onMounted(initialise);
+onBeforeUnmount(() => {
+  stopPolling();
+  if (frameLoadTimer) clearTimeout(frameLoadTimer);
 });
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
-    <div v-if="loading" class="flex items-center justify-center flex-1 text-sm text-[#2C2C2C]">
+  <div class="relative flex flex-col flex-1 w-full min-w-0 min-h-0">
+    <div v-if="loading" role="status" class="absolute inset-0 z-10 flex items-center justify-center bg-white text-sm text-[#2C2C2C]">
       Loading secure payment form...
     </div>
 
-    <div v-show="!loading && !done" class="flex flex-col flex-1 min-h-0">
+    <div class="flex flex-col flex-1 min-h-0" :class="{ invisible: loading || done }" :inert="loading || done">
       <!-- Apple Pay / Google Pay. ECOMMPAY renders whichever the device supports. -->
       <div v-show="expressAvailable" class="shrink-0">
         <div :id="expressTargetId"></div>
-        <div class="flex items-center gap-3 my-4 text-xs text-[#BEC0C6]">
+        <div class="flex items-center gap-3 my-1 text-xs text-[#BEC0C6] lg:my-2">
           <span class="h-px flex-1 bg-[#E5E7EB]"></span>
           <span>or pay by card</span>
           <span class="h-px flex-1 bg-[#E5E7EB]"></span>
@@ -262,27 +318,81 @@ watch(errorMessage, (message) => {
       </div>
 
       <!-- The card microframe. Card data lives in ECOMMPAY's frame, never in this page. -->
-      <div :id="cardTargetId" class="flex-1 min-h-[220px]"></div>
+      <div :id="cardTargetId" class="w-full shrink-0"></div>
 
-      <label class="flex items-start gap-2 mt-4 text-xs leading-snug text-[#2C2C2C] shrink-0">
-        <input v-model="termsAccepted" type="checkbox" class="mt-[2px] shrink-0" />
-        <span>I accept the terms and conditions.</span>
-      </label>
+      <div class="flex items-center justify-center w-full gap-3 pt-2 mt-auto shrink-0">
+        <input id="ecommpay-agree-terms" v-model="termsAccepted" type="checkbox"
+          class="w-4 h-4 shrink-0 border border-[#0F1829] rounded-[30%] lg:w-[1.35rem] lg:h-[1.35rem]" />
+        <label for="ecommpay-agree-terms" class="flex-1 text-[13px] font-thin leading-[1.15] lg:text-[17px]">
+          I agree to the
+          <a href="/terms" target="_blank" rel="noopener noreferrer" class="text-brand hover:underline">privacy policy</a>
+          and
+          <a href="/terms" target="_blank" rel="noopener noreferrer" class="text-brand hover:underline">terms &amp; conditions</a>
+          of service.
+        </label>
+      </div>
 
       <button
         type="button"
-        class="w-full py-3 mt-4 font-bold text-white rounded-lg bg-brand disabled:opacity-60 shrink-0"
+        class="flex items-center justify-center w-full h-[35px] gap-2 px-3 mt-2 text-[15px] font-bold text-center text-white rounded-[6px] hover:bg-brand/90 focus:ring-4 focus:outline-none focus:ring-blue-300 bg-brand disabled:opacity-60 disabled:cursor-not-allowed shrink-0 lg:mt-3 lg:h-[46px] lg:text-[20px] lg:rounded-lg"
         :disabled="!canSubmit"
+        :aria-busy="submitting"
         @click="handleSubmit"
       >
+        <span v-if="submitting" class="w-5 h-5 border-2 rounded-full border-white/40 border-t-white animate-spin"
+          aria-hidden="true"></span>
         {{ buttonLabel }}
       </button>
     </div>
 
-    <div v-if="done" class="flex items-center justify-center flex-1 font-bold text-center text-brand">
-      {{ successMessage }}<br />Redirecting to your report...
+    <div v-if="done" role="status" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white text-center">
+      <p class="font-bold text-brand">{{ successMessage }}</p>
+
+      <p v-if="pendingNotice" class="mt-2 text-sm leading-snug text-[#2C2C2C]">
+        {{ pendingNotice }}
+      </p>
+      <p v-else class="mt-2 font-bold text-brand">Redirecting to your report...</p>
+
+      <NuxtLink
+        v-if="pendingNotice"
+        to="/dashboard"
+        class="px-6 py-2 mt-5 text-sm font-bold text-white rounded-lg bg-brand"
+      >
+        Go to my account
+      </NuxtLink>
     </div>
 
-    <p v-if="errorMessage" class="mt-3 text-sm text-[#EF343A]">{{ errorMessage }}</p>
+    <div
+      v-if="errorMessage"
+      class="absolute inset-0 z-40 flex items-center justify-center bg-white/90 rounded-[10px] lg:rounded-[13px]"
+      role="alert"
+    >
+      <div class="w-full max-w-[19rem] p-5 text-center bg-white border border-[#F5D5D6] rounded-[10px] shadow-lg">
+        <p class="text-sm leading-snug text-[#EF343A]">{{ errorMessage }}</p>
+        <button
+          type="button"
+          class="w-full py-2 mt-4 text-sm font-bold text-white rounded-lg bg-brand"
+          @click="dismissError"
+        >
+          Try again
+        </button>
+      </div>
+    </div>
   </div>
 </template>
+
+<style>
+.fullscreen-iframe {
+  z-index: 2147483000 !important;
+}
+
+iframe.fullscreen-iframe.white,
+iframe.fullscreen-iframe.transparent {
+  background: transparent !important;
+}
+
+body:has(.fullscreen-iframe) .checkout-decoration {
+  transform: translateY(100%);
+  opacity: 0;
+}
+</style>

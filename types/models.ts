@@ -484,6 +484,7 @@ export interface CarLookupPayload extends Record<string, unknown> {
   HighRiskRecordList?: Array<Record<string, unknown>>;
   total_lookup?: number;
   allow_full_report?: boolean;
+  includes_vdi_checks?: boolean;
   request_count?: number | string;
   one_off_request_count?: number | string;
   request_count_trial?: number | string;
@@ -516,4 +517,6 @@ export interface CarRegistrationSearchState {
   financeRecords: FinanceRecords | null;
   totalNumberOfLooksUp: number;
   allowFullReport: boolean;
+  includesVdiChecks: boolean;
+  dataVersion: number;
 }

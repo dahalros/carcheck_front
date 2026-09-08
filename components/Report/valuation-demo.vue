@@ -8,14 +8,14 @@ const isAuthenticated = computed(() => useAuthStore().isAuthenticated);
 
 const chartData = [
   { label: "OTR(On The Road)", value: 30000 },
-  { label: "asdqw", value: 12371 },
-  { label: "asd", value: 23444 },
-  { label: "asxx", value: 30000 },
-  { label: "asxsd", value: 23523 },
-  { label: "qwdasd", value: 64645 },
-  { label: "xasa", value: 34555 },
-  { label: "asdasd", value: 34543 },
-  { label: "axasa", value: 52335 },
+  { label: "Valuation 1", value: 12371 },
+  { label: "Valuation 2", value: 23444 },
+  { label: "Valuation 3", value: 30000 },
+  { label: "Valuation 4", value: 23523 },
+  { label: "Valuation 5", value: 64645 },
+  { label: "Valuation 6", value: 34555 },
+  { label: "Valuation 7", value: 34543 },
+  { label: "Valuation 8", value: 52335 },
 ];
 
 function getChartHeight() {

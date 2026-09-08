@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import Hashed from '../Includes/Hashed.vue';
 import { useAuthStore } from '~/stores/auth';
+import Hashed from '../Includes/Hashed.vue';
 
 const isTableVisible = ref(true);
 const isAuthenticated = computed(() => authStore.isAuthenticated);
@@ -23,7 +23,7 @@ const writeOff = computed(() => carRegistrationSearch.writeOff);
 const riskRecords = computed(() => carRegistrationSearch.riskRecords);
 const finances = computed(() => carRegistrationSearch.financeRecords);
 
-const { isShowAble } = useIsShowAble();
+const { includesVdiChecks } = useIsShowAble();
 const {
   carousel,
   currentSlide,
@@ -85,7 +85,7 @@ const {
           </div>
           <div class="w-1/2">
             <h2 class="text-6xl font-bold text-[#FFA500] lg:text-7xl">
-              <span v-if="isShowAble">{{ writeOff ? writeOff['WriteOffRecordCount'] : 0 }}</span>
+              <span v-if="includesVdiChecks">{{ writeOff ? writeOff['WriteOffRecordCount'] : 0 }}</span>
               <hashed contain="zero" v-else></hashed>
             </h2>
             <p class="text-xl font-light lg:text-3xl"> WRITE-OFF <br /> RECORD</p>
@@ -101,7 +101,7 @@ const {
           </div>
           <div class="w-1/2">
             <h2 class="text-6xl font-bold text-[#EF343A] lg:text-7xl">
-              <span v-if="isShowAble">{{ riskRecords ? riskRecords['HighRiskRecordCount'] : 0 }}</span>
+              <span v-if="includesVdiChecks">{{ riskRecords ? riskRecords['HighRiskRecordCount'] : 0 }}</span>
               <hashed contain="zero" v-else></hashed>
             </h2>
             <p class="text-xl font-light lg:text-3xl"> HIGH RISK <br /> RECORD</p>
@@ -117,7 +117,7 @@ const {
           </div>
           <div class="w-1/2">
             <h2 class="text-6xl font-bold text-[#FF7400] lg:text-7xl">
-              <span v-if="isShowAble">{{ finances ? finances['FinanceRecordCount'] : 0 }}</span>
+              <span v-if="includesVdiChecks">{{ finances ? finances['FinanceRecordCount'] : 0 }}</span>
               <hashed contain="zero" type="X" v-else></hashed>
             </h2>
             <p class="text-xl font-light lg:text-3xl">FINANCE <br /> RECORD</p>

@@ -45,7 +45,14 @@ export default defineNuxtConfig({
 
     public: {
       stripe_public_key: process.env.STRIPE_PUBLIC_KEY,
+      isDev: ["dev", "develop", "local"].includes(
+        process.env.VITE_APP_ENV || process.env.APP_ENV || "local",
+      ),
     },
+  },
+
+  routeRules: {
+    "/report": { ssr: false },
   },
 
   compatibilityDate: "2024-09-05",
