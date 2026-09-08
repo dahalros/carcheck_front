@@ -55,6 +55,11 @@ let cardWidget: WidgetHandle | null = null;
 let expressWidget: WidgetHandle | null = null;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let frameLoadTimer: ReturnType<typeof setTimeout> | null = null;
+let cardPaymentId: string | null = null;
+let expressPaymentId: string | null = null;
+let activePaymentId: string | null = null;
+let paymentStarted = false;
+let confirming = false;
 
 function finishLoading(failed = false) {
   if (frameLoadTimer) clearTimeout(frameLoadTimer);
@@ -77,7 +82,7 @@ useHead({
   script: [{ src: CDN_JS, defer: true }],
 });
 
-const canSubmit = computed(() => termsAccepted.value && !submitting.value && !done.value && !loading.value);
+const canSubmit = computed(() => termsAccepted.value && !submitting.value && !done.value && !loading.value && !needsRestart.value && !errorMessage.value);
 
 const stopPolling = () => {
   if (pollTimer) {
@@ -106,37 +111,61 @@ function waitForLibrary(): Promise<EPayWidgetApi> {
   });
 }
 
-/**
- * Callbacks shared by both widgets. Everything the platform needs was signed server-side, so
- * onCheckSubmit has nothing left to validate and simply approves.
- */
+function releaseSubmission() {
+  activePaymentId = null;
+  paymentStarted = false;
+  confirming = false;
+  submitting.value = false;
+  buttonLabel.value = 'Get report';
+}
+
 function sharedCallbacks(paymentId: string) {
   return {
-    onCheckSubmit: async (_data: unknown, resolve: () => void) => resolve(),
+    onCheckSubmit: async (_data: unknown, resolve: () => void, reject: () => void) => {
+      if (!termsAccepted.value || loading.value || done.value || needsRestart.value || errorMessage.value ||
+        paymentStarted || ![cardPaymentId, expressPaymentId].includes(paymentId) ||
+        (activePaymentId !== null && activePaymentId !== paymentId)) return reject();
+
+      activePaymentId = paymentId;
+      paymentStarted = true;
+      submitting.value = true;
+      buttonLabel.value = 'PROCESSING...';
+      resolve();
+    },
     onShowLoader: () => {
+      if (activePaymentId !== paymentId || done.value) return;
       submitting.value = true;
       buttonLabel.value = 'PROCESSING...';
     },
     onHideLoader: () => {
-      submitting.value = false;
+    },
+    onValidationError: () => {
+      if (activePaymentId === paymentId && !paymentStarted) releaseSubmission();
     },
     onPaymentSuccess: () => {
+      if (activePaymentId !== paymentId || done.value) return;
       leaveFullscreen();
       buttonLabel.value = 'ALMOST THERE!';
       // The widget says the customer is done; our callback says whether they paid.
       confirmWithBackend(paymentId);
     },
     onPaymentFail: () => {
+      if (activePaymentId !== paymentId || done.value) return;
+      stopPolling();
       leaveFullscreen();
-      submitting.value = false;
-      buttonLabel.value = 'Get report';
+      releaseSubmission();
       needsRestart.value = true;
       errorMessage.value = 'That payment did not go through. Please try another card.';
     },
     onError: ({ messages }: { messages?: string[] }) => {
+      if (activePaymentId !== paymentId || done.value) return;
       leaveFullscreen();
-      submitting.value = false;
-      buttonLabel.value = 'Get report';
+      if (paymentStarted) {
+        buttonLabel.value = 'CHECKING PAYMENT...';
+        confirmWithBackend(paymentId);
+        return;
+      }
+      releaseSubmission();
       errorMessage.value = messages?.length
         ? messages.join(' ')
         : 'Something went wrong with the payment form.';
@@ -168,6 +197,8 @@ async function initialise() {
     // Target ids come from the backend because they are part of the signed parameter set.
     cardTargetId.value = config.card.target_element;
     expressTargetId.value = config.express?.target_element ?? expressTargetId.value;
+    cardPaymentId = config.card.payment_id;
+    expressPaymentId = config.express?.payment_id ?? null;
     await nextTick();
 
     frameLoadTimer = setTimeout(() => finishLoading(true), LIBRARY_TIMEOUT_MS);
@@ -211,33 +242,47 @@ function handleSubmit() {
   }
 
   errorMessage.value = null;
-
-  // The microframe renders no button of its own; this is what submits the card form. Field
-  // level validation errors come back through onError.
-  cardWidget?.trySubmit?.();
+  if (!cardWidget?.trySubmit || !cardPaymentId) return;
+  activePaymentId = cardPaymentId;
+  submitting.value = true;
+  buttonLabel.value = 'PROCESSING...';
+  try {
+    cardWidget.trySubmit();
+  } catch {
+    if (paymentStarted) {
+      confirmWithBackend(cardPaymentId);
+      return;
+    }
+    releaseSubmission();
+    errorMessage.value = 'The payment form could not be submitted. Please try again.';
+  }
 }
 
 /** Poll our own status endpoint until the ECOMMPAY callback has recorded the payment. */
 function confirmWithBackend(paymentId: string) {
+  if (confirming || done.value) return;
+  confirming = true;
+  submitting.value = true;
   stopPolling();
   const startedAt = Date.now();
 
   const poll = async () => {
-    if (done.value) return;
+    if (done.value || activePaymentId !== paymentId) return;
 
     if (Date.now() - startedAt > POLL_CEILING_MS) {
       stopPolling();
       done.value = true;
       submitting.value = false;
-      successMessage.value = 'Payment received.';
+      successMessage.value = 'Payment confirmation pending.';
       pendingNotice.value =
-        'It is taking longer than usual to confirm. Your report will appear in your account shortly.';
+        'Please check your account or contact support before trying another payment.';
       return;
     }
 
     try {
       const response = await subscriptionStore.checkEcommPayStatus(paymentId);
       const payload = response.payload;
+      if (done.value || activePaymentId !== paymentId) return;
 
       if (payload?.status === 'success') {
         stopPolling();
@@ -253,8 +298,7 @@ function confirmWithBackend(paymentId: string) {
       if (payload?.status === 'failed') {
         stopPolling();
         leaveFullscreen();
-        submitting.value = false;
-        buttonLabel.value = 'Get report';
+        releaseSubmission();
         needsRestart.value = true;
         errorMessage.value = payload.message || 'Payment failed. Please try another card.';
         return;
@@ -264,7 +308,7 @@ function confirmWithBackend(paymentId: string) {
       console.error('Payment status check failed:', error);
     }
 
-    pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+    if (!done.value && activePaymentId === paymentId) pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
   };
 
   poll();
@@ -281,8 +325,7 @@ async function dismissError() {
   expressWidget = null;
   needsRestart.value = false;
   expressAvailable.value = false;
-  submitting.value = false;
-  buttonLabel.value = 'Get report';
+  releaseSubmission();
   loading.value = true;
 
   for (const id of [cardTargetId.value, expressTargetId.value]) {
@@ -295,6 +338,7 @@ async function dismissError() {
 
 onMounted(initialise);
 onBeforeUnmount(() => {
+  activePaymentId = null;
   stopPolling();
   if (frameLoadTimer) clearTimeout(frameLoadTimer);
 });
@@ -308,7 +352,7 @@ onBeforeUnmount(() => {
 
     <div class="flex flex-col flex-1 min-h-0" :class="{ invisible: loading || done }" :inert="loading || done">
       <!-- Apple Pay / Google Pay. ECOMMPAY renders whichever the device supports. -->
-      <div v-show="expressAvailable" class="shrink-0">
+      <div v-show="expressAvailable" class="shrink-0" :inert="done || needsRestart || !termsAccepted">
         <div :id="expressTargetId"></div>
         <div class="flex items-center gap-3 my-1 text-xs text-[#BEC0C6] lg:my-2">
           <span class="h-px flex-1 bg-[#E5E7EB]"></span>
@@ -321,7 +365,7 @@ onBeforeUnmount(() => {
       <div :id="cardTargetId" class="w-full shrink-0"></div>
 
       <div class="flex items-center justify-center w-full gap-3 pt-2 mt-auto shrink-0">
-        <input id="ecommpay-agree-terms" v-model="termsAccepted" type="checkbox"
+        <input id="ecommpay-agree-terms" v-model="termsAccepted" type="checkbox" :disabled="submitting || done"
           class="w-4 h-4 shrink-0 border border-[#0F1829] rounded-[30%] lg:w-[1.35rem] lg:h-[1.35rem]" />
         <label for="ecommpay-agree-terms" class="flex-1 text-[13px] font-thin leading-[1.15] lg:text-[17px]">
           I agree to the

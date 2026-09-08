@@ -17,6 +17,7 @@ const envConfig = useRuntimeConfig();
 const stripePromise = loadStripe(envConfig.public.stripe_public_key as string);
 const loading = ref(false);
 const done = ref(false);
+const paymentStarted = ref(false);
 const termsAccepted = ref(false);
 const cardholderName = ref('');
 const buttonProcess = ref('Get report');
@@ -62,7 +63,8 @@ onMounted(async () => {
     }
 });
 async function handleCheckoutClick() {
-    if (loading.value || done.value) return;
+    if (loading.value || done.value || paymentStarted.value) return;
+    loading.value = true;
     buttonProcess.value = "PROCESSING...";
     try {
         resetError();
@@ -77,7 +79,6 @@ async function handleCheckoutClick() {
             buttonProcess.value = "PROCESS";
             return;
         }
-        loading.value = true;
         const stripe = await stripePromise;
         if (!stripe || !elements) {
             console.error('Stripe.js has not yet loaded.');
@@ -105,6 +106,7 @@ async function handleCheckoutClick() {
             buttonProcess.value = "PROCESS";
             return;
         }
+        paymentStarted.value = true;
         const response = await subscriptionStore.createPaymentIntent(
             paymentMethod.id,
             { name: cardholderName.value },
@@ -118,8 +120,15 @@ async function handleCheckoutClick() {
                 payment_method: paymentMethod.id,
             });
             if (confirmError) {
+                paymentStarted.value = !['requires_payment_method', 'canceled'].includes(confirmError.payment_intent?.status || '');
                 buttonProcess.value = "PROCESS";
-                (errorMessage.value as any) = confirmError.message;
+                errorMessage.value = paymentStarted.value
+                    ? 'Your payment is still being confirmed. Please check your account or contact support before trying again.'
+                    : confirmError.message || 'Payment declined. Please try another card.';
+                return;
+            }
+            if (paymentIntent?.status !== 'succeeded') {
+                errorMessage.value = 'Your payment is still being confirmed. Please check your account before trying again.';
                 return;
             }
         }
@@ -132,27 +141,23 @@ async function handleCheckoutClick() {
             let selectedPlan = plan.getSelectedPlan;
             if (selectedPlan.plan_code === "single-offer") {
                 successMessage.value = "Payment successful.";
-                await applyPaymentPayload(response.payload);
                 done.value = true;
+                await applyPaymentPayload(response.payload);
                 buttonProcess.value = "DONE!";
                 redirectToReport();
             } else {
                 await createSubscription(selectedPlan);
             }
         }
-    } catch (error) {
-
-        if (!error.data?.success) {
-            errorMessage.value = error.data.message;
-
-        }
+    } catch (error: any) {
+        errorMessage.value = paymentStarted.value
+            ? 'We could not finish confirming your payment. Please check your account or contact support before trying again.'
+            : error?.data?.message || error?.message || 'Unable to start the payment. Please try again.';
         console.error({ error });
         buttonProcess.value = "PROCESS";
     } finally {
-        if (!done.value) {
-            loading.value = false;
-            buttonProcess.value = "PROCESS";
-        }
+        loading.value = false;
+        if (!done.value) buttonProcess.value = paymentStarted.value ? 'CHECK PAYMENT STATUS' : 'Get report';
     }
 }
 
@@ -168,21 +173,9 @@ async function createSubscription(selectedPlan) {
             planId: selectedPlan.id,
             regNumber: registrationSearchStore.reg_number,
         });
-        // if (response.success) {
-        //     successMessage.value = "Payment done successfully.";
-        //     buttonProcess.value = "DONE!";
-        // }
         // Shared with the ECOMMPAY checkout so both providers settle identically.
-        await applyPaymentPayload(response.payload);
-
-        // if (selectedPlan.plan_code === '48h-basic-subscription') {
-        //     navigateTo('/vehicle/basic-report');
-        // } else if (selectedPlan.plan_code === '48h-export-subscription') {
-        //     navigateTo('/vehicle/export-report');
-        // } else {
-        //     navigateTo('/vehicle/single-offer-report');
-        // }
         done.value = true;
+        await applyPaymentPayload(response.payload);
         successMessage.value = "Payment successful.";
         redirectToReport();
         buttonProcess.value = "REDIRECTING!";
@@ -190,11 +183,7 @@ async function createSubscription(selectedPlan) {
     } catch (error) {
         buttonProcess.value = "FAILED!";
         console.error("Error creating subscription: ", error);
-        if (error.data && error.data.success === false) {
-            errorMessage.value = error.data.message;
-        } else {
-            errorMessage.value = "An unexpected error occurred while creating the subscription.";
-        }
+        errorMessage.value = 'Your payment was accepted, but we could not finish setting up your report. Please check your account or contact support before trying again.';
     }
 }
 
@@ -204,9 +193,9 @@ function resetError() {
 }
 
 watch(errorMessage, (newErrorMessage) => {
-    if (newErrorMessage) {
+    if (newErrorMessage && !paymentStarted.value) {
         setTimeout(() => {
-            errorMessage.value = null;
+            if (!paymentStarted.value) errorMessage.value = null;
         }, 5000);
     }
 });
@@ -286,7 +275,7 @@ watch(errorMessage, (newErrorMessage) => {
                 <span class="block sm:inline">{{ successMessage }}</span>
                 <br>
             </div>
-            <button v-else type="submit" :disabled="loading || done" :aria-busy="loading"
+            <button v-else type="submit" :disabled="loading || done || paymentStarted" :aria-busy="loading"
                 class="flex items-center justify-center w-full h-[35px] gap-2 px-3 text-[15px] font-bold text-center text-white rounded-[6px] hover:bg-brand/90 focus:ring-4 focus:outline-none focus:ring-blue-300 bg-brand disabled:cursor-not-allowed lg:h-[46px] lg:text-[20px] lg:rounded-lg"
                 :class="loading ? 'opacity-70' : ''">
                 <span v-if="loading" class="w-5 h-5 border-2 rounded-full border-white/40 border-t-white animate-spin"
