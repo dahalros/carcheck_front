@@ -96,7 +96,7 @@
               <h3 class="text-lg font-bold text-gray-800 w-52 text-start">Mileage History</h3>
             </div>
             <div class="flex flex-row items-center justify-center">
-              <img src="/svg/Mot-history.svg" alt="Line" class="w-24" />
+              <img src="/svg/mot-history-1.svg" alt="Line" class="w-24" />
               <h3 class="text-lg font-bold text-gray-800 w-52 text-start ">MOT History</h3>
             </div>
             <div class="flex flex-row items-center justify-center">
@@ -124,7 +124,7 @@ const mobileReportGroups = [
     { label: 'Import/Export History', icon: '/svg/import-export.svg' },
     { label: 'Technical Data', icon: '/svg/technical-data.svg' },
     { label: 'Mileage History', icon: '/svg/mileage-history-1.svg' },
-    { label: 'MOT History', icon: '/svg/Mot-history.svg' },
+    { label: 'MOT History', icon: '/svg/mot-history-1.svg' },
     { label: 'Damage History', icon: '/svg/damage-history-1.svg' },
     { label: 'Theft Check', icon: '/svg/theft-check-1.svg' },
   ],

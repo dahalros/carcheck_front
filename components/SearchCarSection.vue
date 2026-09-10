@@ -109,7 +109,7 @@ const moreFeatures = () => {
   .hero-features :deep(> div:nth-child(3) img) { left: 0.423cqw; width: 4.225cqw; height: 4.225cqw; }
   .hero-features :deep(> div:nth-child(4) img) { left: 0.412cqw; width: 3.472cqw; height: 4.262cqw; }
   .hero-features :deep(> div:nth-child(5) img) { left: 0.634cqw; width: 4.014cqw; height: 4.225cqw; }
-  .hero-features :deep(> div:nth-child(6) img) { left: 0.082cqw; width: 4.225cqw; height: 3.803cqw; }
+  .hero-features :deep(> div:nth-child(6) img) { left: 0.44cqw; width: 3.47cqw; height: 4.225cqw; }
 }
 
 @media screen and (min-width: 768px) {
