@@ -12,6 +12,36 @@ const toRegNumber = (car: any): string | null =>
   (typeof car === "string" ? car : car?.reg_number) ||
   (import.meta.client ? localStorage.getItem("reg_number") : null);
 
+const POLL_INTERVAL_MS = 2000;
+const POLL_TIMEOUT_MS = 120000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const pollForReport = async (
+  authStore: ReturnType<typeof useAuthStore>,
+  regNumber: string | null,
+): Promise<string> => {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+
+    const response = await authStore.fetchReportStatus(regNumber);
+    const payload = response?.payload;
+
+    if (payload?.status === "completed" && payload.report_link) {
+      return payload.report_link;
+    }
+
+    if (payload?.status === "failed") {
+      throw new Error(payload.error || "Report generation failed. Please try again.");
+    }
+
+  }
+
+  throw new Error("Your report is taking longer than expected. Please try again shortly.");
+};
+
 export const useDownloadReport = () => {
   const isDownloading = ref(false);
   const isAnyDownloading = useState("report-download-in-progress", () => false);
@@ -58,14 +88,19 @@ export const useDownloadReport = () => {
         return { success: false };
       }
 
-      const response = await authStore.fetchReportLink(toRegNumber(car));
+      const regNumber = toRegNumber(car);
+      const response = await authStore.fetchReportLink(regNumber);
 
       if (!response.success || !response.payload) {
         throw new Error("Failed to retrieve the report data.");
       }
 
+      const reportLink =
+        response.payload.report_link ??
+        (await pollForReport(authStore, regNumber));
+
       const link = document.createElement("a");
-      link.href = response.payload.report_link;
+      link.href = reportLink;
       link.download = `report-${reportDate()}.pdf`;
       link.target = "_blank";
       document.body.appendChild(link);

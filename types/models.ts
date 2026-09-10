@@ -197,8 +197,18 @@ export type EmailCheckPayload =
       user: User;
     };
 
+export type ReportStatus =
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "not_found";
+
 export interface ReportLink {
-  report_link: string;
+  report_link?: string;
+  status?: ReportStatus;
+  reg_number?: string;
+  error?: string;
 }
 
 export interface BillingDetails {
