@@ -173,10 +173,17 @@ export interface CustomPlanPurchase {
   success: boolean;
   message: string;
   status?: string;
+  // Stripe only: a 3D Secure challenge the browser has to complete.
   requires_action?: boolean;
   payment_intent_client_secret?: string;
   payment_intent_id?: string;
   error_type?: string;
+  // ECOMMPAY only: the charge was accepted but has not settled, the callback will finish it.
+  pending?: boolean;
+  payment_id?: string;
+  error_code?: string;
+  needs_new_card?: boolean;
+  can_retry?: boolean;
 }
 
 export type EmailCheckPayload =
@@ -190,19 +197,70 @@ export type EmailCheckPayload =
       user: User;
     };
 
+export type ReportStatus =
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "not_found";
+
 export interface ReportLink {
-  report_link: string;
+  report_link?: string;
+  status?: ReportStatus;
+  reg_number?: string;
+  error?: string;
 }
 
 export interface BillingDetails {
   name: string;
 }
 
+export interface PaymentProvider {
+  id: number;
+  name: string;
+  provider_code: string;
+  is_active: boolean;
+}
+
+/**
+ * One endpoint, two shapes. Stripe answers with a client secret for its in-page Elements
+ * form; ECOMMPAY answers with a hosted Payment Page URL to load in an iframe. Which one to
+ * expect is decided by the active provider, so every field is optional here.
+ */
 export interface PaymentIntentPayload {
-  clientSecret: string;
-  customerId: string;
+  clientSecret?: string;
+  customerId?: string;
   paymentStatus?: string;
   hasSubscription?: SubscriptionStatus;
+  payment_url?: string;
+  payment_id?: string;
+}
+
+export interface EcommPayStatusPayload extends Partial<SubscriptionPurchasePayload> {
+  status: "success" | "pending" | "failed";
+  message?: string;
+}
+
+/**
+ * A signed parameter object for EPayWidget.runEmbedded(). Built and signed by the backend and
+ * passed through verbatim -- adding or changing any field here invalidates the signature.
+ */
+export interface EcommPayWidgetParams {
+  project_id: number;
+  payment_id: string;
+  payment_amount: number;
+  payment_currency: string;
+  target_element: string;
+  merchant_domain: string;
+  signature: string;
+  [param: string]: unknown;
+}
+
+export interface EcommPayWidgetConfig {
+  /** The card microframe: a bare card form the page supplies its own submit button for. */
+  card: EcommPayWidgetParams;
+  /** Apple Pay / Google Pay, rendered by ECOMMPAY as embedded buttons. */
+  express: EcommPayWidgetParams;
 }
 
 export interface SubscriptionPurchasePayload {
@@ -221,6 +279,7 @@ export interface RequestCounts {
   request_count: number;
   one_off_request_count: number;
   request_count_trial: number;
+  has_subscription?: SubscriptionStatus;
 }
 
 export interface MotAnnotation {
@@ -435,6 +494,7 @@ export interface CarLookupPayload extends Record<string, unknown> {
   HighRiskRecordList?: Array<Record<string, unknown>>;
   total_lookup?: number;
   allow_full_report?: boolean;
+  includes_vdi_checks?: boolean;
   request_count?: number | string;
   one_off_request_count?: number | string;
   request_count_trial?: number | string;
@@ -467,4 +527,6 @@ export interface CarRegistrationSearchState {
   financeRecords: FinanceRecords | null;
   totalNumberOfLooksUp: number;
   allowFullReport: boolean;
+  includesVdiChecks: boolean;
+  dataVersion: number;
 }

@@ -1,7 +1,5 @@
 <script setup>
 import { faArrowUp, faArrowDown } from '@fortawesome/free-solid-svg-icons';
-import { library } from '@fortawesome/fontawesome-svg-core';
-library.add(faArrowUp, faArrowDown);
 
 import { onMounted } from 'vue';
 import { useCarRegistrationSearchStore } from '@/stores/carRegistrationSearch';

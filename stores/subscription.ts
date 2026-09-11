@@ -5,6 +5,8 @@ import ApiService from "~/services/apiService";
 import type {
   ApiPayloadResponse,
   BillingDetails,
+  EcommPayStatusPayload,
+  EcommPayWidgetConfig,
   PaymentIntentPayload,
   Subscription,
   SubscriptionPurchasePayload,
@@ -93,16 +95,44 @@ export const useSubscriptionStore = defineStore("subscription", {
       return this.subscription;
     },
 
+    /**
+     * paymentMethodId is Stripe's; ECOMMPAY collects the card on its own page and sends null.
+     * regNumber is only read by ECOMMPAY, which has to remember it across the hosted page and
+     * the callback that comes back with nothing but a payment id.
+     */
     createPaymentIntent(
-      paymentMethodId: string,
+      paymentMethodId: string | null,
       billingDetails: BillingDetails,
       planId: number,
+      regNumber: string | null = null,
     ): Promise<ApiPayloadResponse<PaymentIntentPayload>> {
       return ApiService.post<ApiPayloadResponse<PaymentIntentPayload>>("payment/token/create", {
         payment_method_id: paymentMethodId,
         billing_details: billingDetails,
         plan_id: planId,
+        reg_number: regNumber,
       });
+    },
+
+    /**
+     * Signed parameters for the ECOMMPAY embedded widgets. Amount and currency are decided by
+     * the backend from the plan row, so nothing here is worth tampering with client-side.
+     */
+    fetchEcommPayWidgetConfig(
+      planId: number,
+      regNumber: string | null = null,
+    ): Promise<ApiPayloadResponse<EcommPayWidgetConfig>> {
+      return ApiService.post<ApiPayloadResponse<EcommPayWidgetConfig>>(
+        "payment/ecommpay/widget-config",
+        { plan_id: planId, reg_number: regNumber },
+      );
+    },
+
+    /** Polled while the customer is on the ECOMMPAY hosted page. */
+    checkEcommPayStatus(paymentId: string): Promise<ApiPayloadResponse<EcommPayStatusPayload>> {
+      return ApiService.get<ApiPayloadResponse<EcommPayStatusPayload>>(
+        `payment/ecommpay/status/${encodeURIComponent(paymentId)}`,
+      );
     },
 
     processPayment(

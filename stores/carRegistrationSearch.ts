@@ -5,6 +5,7 @@ import { systematicFourCharCode } from '~/composables/useGenerateLocalstorageCod
 import { useTokenStore } from '~/stores/token';
 import { useAuthStore } from '~/stores/auth';
 import { useCarStore } from '~/stores/car';
+import { deriveCarState } from '~/stores/deriveCarState';
 import type {
     ApiPayloadResponse,
     CarLookupPayload,
@@ -70,6 +71,8 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
             financeRecords: null,
             totalNumberOfLooksUp: 0,
             allowFullReport: false,
+            includesVdiChecks: false,
+            dataVersion: 0,
         }
     },
     actions: {
@@ -81,7 +84,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.vehicleImageUrl = JSON.parse(decrypted) as string;
                 } catch (error) {
-                    console.error("Failed to decrypt vehicle image url:", error);
+                    devError("Failed to decrypt vehicle image url:", error);
                 }
             }
             return this.vehicleImageUrl;
@@ -97,7 +100,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                 // Ensure vbrand_logo is updated in state
                 this.$patch({ vbrand_logo: JSON.parse(decrypted) as string });
             } catch (error) {
-                console.error("Failed to decrypt Vehicle logo: ", error);
+                devError("Failed to decrypt Vehicle logo: ", error);
             }
 
             return this.vbrand_logo;
@@ -110,7 +113,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.smmtDetails = JSON.parse(decrypted) as SmmtDetails;
                 } catch (error) {
-                    console.error("Failed to decrypt SmmtDetails:", error);
+                    devError("Failed to decrypt SmmtDetails:", error);
                 }
             }
             return this.smmtDetails;
@@ -123,7 +126,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.dimensions = JSON.parse(decrypted) as VehicleData;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle Dimensions:", error);
+                    devError("Failed to decrypt Vehicle Dimensions:", error);
                 }
             }
             return this.dimensions;
@@ -136,7 +139,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.vehicleRegistration = JSON.parse(decrypted) as VehicleRegistration;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle Registration:", error);
+                    devError("Failed to decrypt Vehicle Registration:", error);
                 }
             }
             return this.vehicleRegistration;
@@ -149,7 +152,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.motVed = JSON.parse(decrypted) as MotVed;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle MotVed: ", error);
+                    devError("Failed to decrypt Vehicle MotVed: ", error);
                 }
             }
             return this.motVed;
@@ -162,7 +165,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.general = JSON.parse(decrypted) as VehicleData;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle General Information: ", error);
+                    devError("Failed to decrypt Vehicle General Information: ", error);
                 }
             }
             return this.general;
@@ -175,7 +178,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.performance = JSON.parse(decrypted) as VehicleData;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle Technical Performance: ", error);
+                    devError("Failed to decrypt Vehicle Technical Performance: ", error);
                 }
             }
             return this.performance;
@@ -188,7 +191,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.classificationDetails = JSON.parse(decrypted) as VehicleData;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle Classification Information: ", error);
+                    devError("Failed to decrypt Vehicle Classification Information: ", error);
                 }
             }
             return this.classificationDetails;
@@ -201,7 +204,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.vehicleHistory = JSON.parse(decrypted) as VehicleHistory;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle History: ", error);
+                    devError("Failed to decrypt Vehicle History: ", error);
                 }
             }
             return this.vehicleHistory;
@@ -214,7 +217,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.MOTHistory = JSON.parse(decrypted) as MotRecord[];
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle MOT Additional Information: ", error);
+                    devError("Failed to decrypt Vehicle MOT Additional Information: ", error);
                 }
             }
             return this.MOTHistory;
@@ -227,7 +230,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.mileageHistory = JSON.parse(decrypted) as MileageHistory;
                 } catch (error) {
-                    console.error("Failed to decrypt mileage history: ", error);
+                    devError("Failed to decrypt mileage history: ", error);
                 }
             }
             return this.mileageHistory;
@@ -240,7 +243,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.MOTSummary = JSON.parse(decrypted) as MotSummary;
                 } catch (error) {
-                    console.error("Failed to decrypt MOT summary: ", error);
+                    devError("Failed to decrypt MOT summary: ", error);
                 }
             }
             return this.MOTSummary;
@@ -253,7 +256,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.MOTAdditionalInfo = JSON.parse(decrypted) as VehicleData;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle MOT History: ", error);
+                    devError("Failed to decrypt Vehicle MOT History: ", error);
                 }
             }
             return this.MOTAdditionalInfo;
@@ -267,7 +270,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.vehicleValuationsList = JSON.parse(decrypted) as VehicleValuations;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle MOT History: ", error);
+                    devError("Failed to decrypt Vehicle MOT History: ", error);
                 }
             }
             return this.vehicleValuationsList;
@@ -283,7 +286,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.stolenRecord = JSON.parse(decrypted) as StolenRecord;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle Stolen data: ", error);
+                    devError("Failed to decrypt Vehicle Stolen data: ", error);
                 }
             }
 
@@ -297,7 +300,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.writeOff = JSON.parse(decrypted) as WriteOffRecord;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle write-off data: ", error);
+                    devError("Failed to decrypt Vehicle write-off data: ", error);
                 }
             }
             return this.writeOff;
@@ -310,7 +313,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.riskRecords = JSON.parse(decrypted) as RiskRecords;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle risk data: ", error);
+                    devError("Failed to decrypt Vehicle risk data: ", error);
                 }
             }
 
@@ -325,7 +328,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.financeRecords = JSON.parse(decrypted) as FinanceRecords;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle finance data: ", error);
+                    devError("Failed to decrypt Vehicle finance data: ", error);
                 }
             }
             return this.financeRecords;
@@ -339,7 +342,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                     const decrypted = await decryptData(`${code}`, JSON.parse(encryptedData));
                     this.totalNumberOfLooksUp = JSON.parse(decrypted) as number;
                 } catch (error) {
-                    console.error("Failed to decrypt Vehicle total looks up: ", error);
+                    devError("Failed to decrypt Vehicle total looks up: ", error);
                 }
             }
             return this.totalNumberOfLooksUp;
@@ -350,9 +353,8 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
             try {
                 const tokenStore = useTokenStore();
                 const carStore = useCarStore();
-
-
                 const token = tokenStore.getToken;
+
                 this.reg_number = car_reg_number.replace(/[^a-zA-Z0-9]/g, "");
                 carStore.setCarRegNumber(this.reg_number);
 
@@ -365,7 +367,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
 
                 await this.applyCarData(response.payload);
             } catch (error) {
-                console.log("Error while fetching car details:", error);
+                devError("Error while fetching car details:", error);
                 throw error;
             }
         },
@@ -379,20 +381,9 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                 {},
             ) as CarLookupPayload;
 
-            await this.setVehicleImageUrl(combinedPayload);
-            await this.setVehicleLogo(combinedPayload);
-            await this.setSmmtDetails(combinedPayload);
-            await this.setVehicleDimension(combinedPayload);
-            await this.setVehicleRegistration(combinedPayload);
-            await this.setMotVed(combinedPayload);
-            await this.setVehicleGeneralInfo(combinedPayload);
-            await this.setPerformance(combinedPayload);
-            await this.setClassificationDetails(combinedPayload);
-            await this.setMOTHistory(combinedPayload);
-            await this.setMOTSummary(combinedPayload);
-            await this.setMileageHistory(combinedPayload);
-            await this.setMOTAdditionalInfo(combinedPayload);
-            await this.setAllowFullReport(combinedPayload);
+            this.$patch((state) => Object.assign(state, deriveCarState(combinedPayload), {
+                dataVersion: state.dataVersion + 1,
+            }));
 
             if (authStore.user) {
                 authStore.user.request_count = Number(combinedPayload.request_count) || 0;
@@ -400,15 +391,55 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                 authStore.user.request_count_trial = Number(combinedPayload.request_count_trial) || 0;
             }
 
-            await this.setVehicleHistory(combinedPayload);
-            await this.setVehicleValuationList(combinedPayload);
-            await this.setStolenRecord(combinedPayload);
-            await this.setWriteOffRecords(combinedPayload);
-            await this.setFinanceRecords(combinedPayload);
-            await this.setRiskRecords(combinedPayload);
+            await Promise.all([
+                this.setVehicleImageUrl(combinedPayload),
+                this.setVehicleLogo(combinedPayload),
+                this.setSmmtDetails(combinedPayload),
+                this.setVehicleDimension(combinedPayload),
+                this.setVehicleRegistration(combinedPayload),
+                this.setMotVed(combinedPayload),
+                this.setVehicleGeneralInfo(combinedPayload),
+                this.setPerformance(combinedPayload),
+                this.setClassificationDetails(combinedPayload),
+                this.setMOTHistory(combinedPayload),
+                this.setMOTSummary(combinedPayload),
+                this.setMileageHistory(combinedPayload),
+                this.setMOTAdditionalInfo(combinedPayload),
+                this.setVehicleHistory(combinedPayload),
+                this.setVehicleValuationList(combinedPayload),
+                this.setStolenRecord(combinedPayload),
+                this.setWriteOffRecords(combinedPayload),
+                this.setFinanceRecords(combinedPayload),
+                this.setRiskRecords(combinedPayload),
+                this.setNumberOfLooksUp(combinedPayload),
+            ]);
 
-            await this.setNumberOfLooksUp(combinedPayload);
             localStorage.setItem('reg_number', this.reg_number);
+        },
+
+        async hydrateFromStorage(): Promise<void> {
+            await Promise.all([
+                this.fetchVehicleImageUrl(),
+                this.fetchVehicleLogo(),
+                this.fetchSmmtDetails(),
+                this.fetchVehicleDimension(),
+                this.fetchVehicleRegistration(),
+                this.fetchVehicleMotVed(),
+                this.fetchVehicleGeneralInfo(),
+                this.fetchPerformance(),
+                this.fetchClassificationDetails(),
+                this.fetchVehicleHistory(),
+                this.fetchMOTHistory(),
+                this.fetchMileageHistory(),
+                this.fetchMOTSummary(),
+                this.fetchMOTAdditionalInformation(),
+                this.fetchValuationList(),
+                this.fetchStolenRecords(),
+                this.fetchWriteOffRecords(),
+                this.fetchRiskRecords(),
+                this.fetchFinanceRecords(),
+                this.fetchNumberOfLooksUp(),
+            ]);
         },
 
         // Set data in localStorage with encryption
@@ -496,7 +527,7 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
         },
         async setMOTHistory(combinedPayload: CarLookupPayload): Promise<void> {
             const code = systematicFourCharCode('MOTHistory');
-            if (combinedPayload.MotHistory) {
+            if (combinedPayload.MotHistory?.RecordList) {
                 const data = JSON.stringify(combinedPayload.MotHistory.RecordList);
                 const encryptedData = await encryptData(code, data);
                 localStorage.setItem(code, JSON.stringify(encryptedData));
@@ -524,16 +555,12 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
         },
         async setMOTAdditionalInfo(combinedPayload: CarLookupPayload): Promise<void> {
             const code = systematicFourCharCode('MOTAdditionalInfo');
-            if (combinedPayload.MotHistory) {
-                const data = JSON.stringify(combinedPayload.MotHistory?.AdditionalInformation);
+            if (combinedPayload.MotHistory?.AdditionalInformation) {
+                const data = JSON.stringify(combinedPayload.MotHistory.AdditionalInformation);
                 const encryptedData = await encryptData(code, data);
                 localStorage.setItem(code, JSON.stringify(encryptedData));
             }
         },
-        async setAllowFullReport(combinedPayload: CarLookupPayload): Promise<void> {
-            this.allowFullReport = !!combinedPayload.allow_full_report;
-        }
-        ,
         async setFullReportText(text: string): Promise<void> {
             this.getFullReportText = text;
         },
@@ -628,12 +655,10 @@ export const useCarRegistrationSearchStore = defineStore('carRegistrationSearch'
                 localStorage.removeItem(storageKey);
             });
 
-            const { reg_number, getFullReportText } = this;
-            this.$reset();
-            this.$patch({ reg_number, getFullReportText });
+            localStorage.removeItem('reg_number');
         }
     },
     persist: {
-        pick: ["reg_number", "getFullReportText", "allowFullReport"],
+        pick: ["reg_number", "getFullReportText", "allowFullReport", "includesVdiChecks"],
     },
 });

@@ -21,7 +21,7 @@ const toggleTableVisibility = () => {
   isTableVisible.value = !isTableVisible.value
 }
 
-const { isShowAble } = useIsShowAble();
+const { includesVdiChecks } = useIsShowAble();
 const {
   carousel,
   currentSlide,
@@ -94,7 +94,7 @@ onMounted(async () => {
         <div class="bg-white rounded flex items-center overflow-hidden h-[8.25rem] min-w-[calc(100vw-4.125rem)] snap-start lg:min-w-0 lg:h-[10.5rem]">
           <div class="flex flex-col items-center w-1/2">
             <h2 class="text-6xl font-bold text-[#FFA500] lg:text-7xl">
-              <span v-if="isShowAble">{{ numberOfPreviousKeepers > 9 ? numberOfPreviousKeepers : '0' +
+              <span v-if="includesVdiChecks">{{ numberOfPreviousKeepers > 9 ? numberOfPreviousKeepers : '0' +
                 numberOfPreviousKeepers }}</span>
               <hashed contain="zero" v-else></hashed>
             </h2>
@@ -131,7 +131,7 @@ onMounted(async () => {
         <div class="bg-white rounded flex items-center overflow-hidden h-[8.25rem] min-w-[calc(100vw-4.125rem)] snap-start lg:min-w-0 lg:h-[10.5rem]">
           <div class="flex flex-col items-center w-1/2">
             <h2 class="text-6xl font-bold text-[#EF343A] lg:text-7xl">
-              <span v-if="isShowAble">{{ theftReports > 9 ? theftReports : '0' + theftReports }}</span>
+              <span v-if="includesVdiChecks">{{ theftReports > 9 ? theftReports : '0' + theftReports }}</span>
               <hashed contain="zero" v-else></hashed>
             </h2>
             <p class="text-xl font-light lg:text-2xl"> THEFT <br /> REPORT</p>
@@ -161,7 +161,7 @@ onMounted(async () => {
         <div class="bg-white rounded flex items-center overflow-hidden h-[8.25rem] min-w-[calc(100vw-4.125rem)] snap-start lg:min-w-0 lg:h-[10.5rem]">
           <div class="flex flex-col items-center w-1/2">
             <h2 class="text-6xl font-bold text-[#FF7400] lg:text-7xl">
-              <span v-if="isShowAble">{{ plateChangesCount > 9 ? plateChangesCount : '0' + plateChangesCount }}</span>
+              <span v-if="includesVdiChecks">{{ plateChangesCount > 9 ? plateChangesCount : '0' + plateChangesCount }}</span>
               <hashed contain="zero" v-else></hashed>
             </h2>
             <p class="text-xl font-light lg:text-2xl">PLATE <br /> CHANGES</p>

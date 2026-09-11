@@ -144,6 +144,14 @@ const useAuthStore = defineStore("auth", {
       );
     },
 
+    fetchReportStatus(regNumber: string | null): Promise<ApiPayloadResponse<ReportLink>> {
+      return ApiService.post<ApiPayloadResponse<ReportLink>>(
+        "users/report-status",
+        { reg_number: regNumber },
+        useTokenStore().getToken,
+      );
+    },
+
     submitEmailForPasswordReset(form: EmailForm): Promise<ApiDataResponse<User>> {
       return ApiService.post<ApiDataResponse<User>>("users/verify-email", form);
     },

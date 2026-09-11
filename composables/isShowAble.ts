@@ -1,10 +1,16 @@
-import { computed } from "vue";
+import { computed, type ComputedRef } from "vue";
 import { useCarRegistrationSearchStore } from "~/stores/carRegistrationSearch";
 
-export function useIsShowAble() {
-  const carRegistrationSearchStore = useCarRegistrationSearchStore();
+interface ReportEntitlements {
+  isShowAble: ComputedRef<boolean>;
+  includesVdiChecks: ComputedRef<boolean>;
+}
 
-  const isShowAble = computed(() => carRegistrationSearchStore.allowFullReport);
+export function useIsShowAble(): ReportEntitlements {
+  const store = useCarRegistrationSearchStore();
 
-  return { isShowAble };
+  return {
+    isShowAble: computed(() => store.allowFullReport),
+    includesVdiChecks: computed(() => store.includesVdiChecks),
+  };
 }

@@ -11,12 +11,13 @@ const plan = usePlanStore();
 
 const subscriptionStore = useSubscriptionStore();
 const registrationSearchStore = useCarRegistrationSearchStore();
+const { applyPaymentPayload, redirectToReport } = usePaymentSuccess();
 
 const envConfig = useRuntimeConfig();
-
 const stripePromise = loadStripe(envConfig.public.stripe_public_key as string);
 const loading = ref(false);
 const done = ref(false);
+const paymentStarted = ref(false);
 const termsAccepted = ref(false);
 const cardholderName = ref('');
 const buttonProcess = ref('Get report');
@@ -46,10 +47,9 @@ const style = {
 };
 
 onMounted(async () => {
-    const stripe = await stripePromise;
-    if (!stripe) return;
-
-    if (stripe) {
+    try {
+        const stripe = await stripePromise;
+        if (!stripe) throw new Error('Unable to load the payment form. Please reload the page.');
         elements = stripe.elements();
         cardNumberElement = elements.create('cardNumber', { placeholder: '0000 0000 0000 0000', style });
         cardNumberElement.mount('#card-number-element');
@@ -58,10 +58,13 @@ onMounted(async () => {
         cardCvcElement = elements.create('cardCvc', { placeholder: '584', style });
         cardCvcElement.mount('#card-cvc-element');
 
+    } catch {
+        errorMessage.value = 'Unable to load the payment form. Please reload the page or contact support.';
     }
 });
 async function handleCheckoutClick() {
-    if (loading.value || done.value) return;
+    if (loading.value || done.value || paymentStarted.value) return;
+    loading.value = true;
     buttonProcess.value = "PROCESSING...";
     try {
         resetError();
@@ -76,7 +79,6 @@ async function handleCheckoutClick() {
             buttonProcess.value = "PROCESS";
             return;
         }
-        loading.value = true;
         const stripe = await stripePromise;
         if (!stripe || !elements) {
             console.error('Stripe.js has not yet loaded.');
@@ -104,10 +106,12 @@ async function handleCheckoutClick() {
             buttonProcess.value = "PROCESS";
             return;
         }
+        paymentStarted.value = true;
         const response = await subscriptionStore.createPaymentIntent(
             paymentMethod.id,
             { name: cardholderName.value },
             plan.getSelectedPlan.id,
+            registrationSearchStore.reg_number || null,
         );
 
 
@@ -116,8 +120,15 @@ async function handleCheckoutClick() {
                 payment_method: paymentMethod.id,
             });
             if (confirmError) {
+                paymentStarted.value = !['requires_payment_method', 'canceled'].includes(confirmError.payment_intent?.status || '');
                 buttonProcess.value = "PROCESS";
-                (errorMessage.value as any) = confirmError.message;
+                errorMessage.value = paymentStarted.value
+                    ? 'Your payment is still being confirmed. Please check your account or contact support before trying again.'
+                    : confirmError.message || 'Payment declined. Please try another card.';
+                return;
+            }
+            if (paymentIntent?.status !== 'succeeded') {
+                errorMessage.value = 'Your payment is still being confirmed. Please check your account before trying again.';
                 return;
             }
         }
@@ -129,37 +140,24 @@ async function handleCheckoutClick() {
         if (plan.getSelectedPlan) {
             let selectedPlan = plan.getSelectedPlan;
             if (selectedPlan.plan_code === "single-offer") {
-                let payload = response.payload;
                 successMessage.value = "Payment successful.";
-                if (payload?.hasSubscription) {
-                    await subscriptionStore.setHasSubscription(payload.hasSubscription);
-                }
-                const regNumber = registrationSearchStore.reg_number || localStorage.getItem('reg_number');
-                if (regNumber) {
-                    await registrationSearchStore.searchCarRegNumber(regNumber);
-                }
                 done.value = true;
-                setTimeout(() => {
-                    buttonProcess.value = "DONE!";
-                    navigateTo('/report');
-                }, 3000);
+                await applyPaymentPayload(response.payload);
+                buttonProcess.value = "DONE!";
+                redirectToReport();
             } else {
                 await createSubscription(selectedPlan);
             }
         }
-    } catch (error) {
-
-        if (!error.data?.success) {
-            errorMessage.value = error.data.message;
-
-        }
+    } catch (error: any) {
+        errorMessage.value = paymentStarted.value
+            ? 'We could not finish confirming your payment. Please check your account or contact support before trying again.'
+            : error?.data?.message || error?.message || 'Unable to start the payment. Please try again.';
         console.error({ error });
         buttonProcess.value = "PROCESS";
     } finally {
-        if (!done.value) {
-            loading.value = false;
-            buttonProcess.value = "PROCESS";
-        }
+        loading.value = false;
+        if (!done.value) buttonProcess.value = paymentStarted.value ? 'CHECK PAYMENT STATUS' : 'Get report';
     }
 }
 
@@ -175,52 +173,17 @@ async function createSubscription(selectedPlan) {
             planId: selectedPlan.id,
             regNumber: registrationSearchStore.reg_number,
         });
-        // if (response.success) {
-        //     successMessage.value = "Payment done successfully.";
-        //     buttonProcess.value = "DONE!";
-        // }
-        let payload = response.payload;
-        // set/change request_count, one_off_request_count, request_count_trial to user
-        if (payload?.hasSubscription) {
-            user.request_count = Number(payload.hasSubscription.request_count) || 0;
-            user.one_off_request_count = Number(payload.hasSubscription.one_off_request_count) || 0;
-            user.request_count_trial = Number(payload.hasSubscription.request_count_trial) || 0;
-        }
-        if (payload?.hasSubscription) {
-            await subscriptionStore.setHasSubscription(payload.hasSubscription);
-        }
-
-        if (payload?.subscription) {
-            await subscriptionStore.setCurrentSubscription(payload.subscription);
-        }
-
-
-        if (payload?.car_data) {
-            await registrationSearchStore.applyCarData(payload.car_data);
-        }
-
-        // if (selectedPlan.plan_code === '48h-basic-subscription') {
-        //     navigateTo('/vehicle/basic-report');
-        // } else if (selectedPlan.plan_code === '48h-export-subscription') {
-        //     navigateTo('/vehicle/export-report');
-        // } else {
-        //     navigateTo('/vehicle/single-offer-report');
-        // }
+        // Shared with the ECOMMPAY checkout so both providers settle identically.
         done.value = true;
-        setTimeout(() => {
-            successMessage.value = "Payment successful.";
-            navigateTo('/report');
-        }, 3000);
+        await applyPaymentPayload(response.payload);
+        successMessage.value = "Payment successful.";
+        redirectToReport();
         buttonProcess.value = "REDIRECTING!";
 
     } catch (error) {
         buttonProcess.value = "FAILED!";
         console.error("Error creating subscription: ", error);
-        if (error.data && error.data.success === false) {
-            errorMessage.value = error.data.message;
-        } else {
-            errorMessage.value = "An unexpected error occurred while creating the subscription.";
-        }
+        errorMessage.value = 'Your payment was accepted, but we could not finish setting up your report. Please check your account or contact support before trying again.';
     }
 }
 
@@ -230,9 +193,9 @@ function resetError() {
 }
 
 watch(errorMessage, (newErrorMessage) => {
-    if (newErrorMessage) {
+    if (newErrorMessage && !paymentStarted.value) {
         setTimeout(() => {
-            errorMessage.value = null;
+            if (!paymentStarted.value) errorMessage.value = null;
         }, 5000);
     }
 });
@@ -312,7 +275,7 @@ watch(errorMessage, (newErrorMessage) => {
                 <span class="block sm:inline">{{ successMessage }}</span>
                 <br>
             </div>
-            <button v-else type="submit" :disabled="loading || done" :aria-busy="loading"
+            <button v-else type="submit" :disabled="loading || done || paymentStarted" :aria-busy="loading"
                 class="flex items-center justify-center w-full h-[35px] gap-2 px-3 text-[15px] font-bold text-center text-white rounded-[6px] hover:bg-brand/90 focus:ring-4 focus:outline-none focus:ring-blue-300 bg-brand disabled:cursor-not-allowed lg:h-[46px] lg:text-[20px] lg:rounded-lg"
                 :class="loading ? 'opacity-70' : ''">
                 <span v-if="loading" class="w-5 h-5 border-2 rounded-full border-white/40 border-t-white animate-spin"

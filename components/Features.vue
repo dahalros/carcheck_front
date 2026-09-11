@@ -24,7 +24,7 @@ const features = computed<Feature[]>(() => [
 <template>
     <div class="pl-1 text-black " :class="props.alignment">
         <div v-for="feature in features" :key="feature.title" class="flex items-center space-x-4">
-            <img :src="feature.icon === 'mot-history.svg' ? '/assets/svg/Mot-history.svg' : `/svg/${feature.icon}`"
+            <img :src="`/svg/${feature.icon}`"
                 class="size-5 object-contain" alt="">
             <p class="md:tracking-wider font-extralight" :class="props.textSize">{{ feature.title }}</p>
         </div>

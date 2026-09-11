@@ -40,7 +40,7 @@ const selectPlan = (plan) => {
 };
 
 const getFeatureIcon = (iconName) => {
-    return `/assets/svg/${iconName}`;
+    return `/svg/${iconName}`;
 };
 
 onMounted(async () => {
